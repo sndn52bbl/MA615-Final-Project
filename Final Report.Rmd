@@ -1,0 +1,160 @@
+---
+title: "MA615 Final Project"
+author: "Xiaozhou Lu"
+date: "10/12/2020"
+output: 
+  pdf_document: default
+urlcolor: blue
+  
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(lubridate)
+library(bizdays)
+library(quantmod)
+library(tidyquant)
+
+```
+
+# Introduction
+
+Covid-19 can be said to be the most widely spread, and the most serious public health emergencies. The pandemic has caused economic recession in United States and the rest of the world as well. In March, the stock market has plunged several times in a short period. However, the stock market has recovered after that. It is reported that the S&P 500 experienced its best 100 day trend in history, due to optimistic expectations of economic recovery and fiscal stimulus. These factors will drive the market up sharply. And many investors believe that people will soon return to work and production, and the economy will recover soon. Moreover, industries in certain fields of expertise had a increasing trend during pandemic. For example, technological stocks benefits from this event since more and more people chose working and studying online. And medical stocks also went up with a great demand for medical resources during pandemic.
+
+# Objective
+
+Our goal is to compute an efficient portfolios. For a given target expected return, investors would only choose the lowest risk portfolio for a given return. The minimum variance portfolio refers to the feasible portfolio with the lowest standard deviation. Minimum variance portfolios trace the set of Efficient Portfolios. The theory is based on Modern Portfolio Theory(MPT) by Harry Markowitz (https://en.wikipedia.org/wiki/Modern_portfolio_theory). We will use data from 1st May to 30th June to compute the weights and use that weights for our transaction. We set an initial position of $250000 in cash for the portfolio starting on 1st July 2020. And track the portfolio from 1st July 2020 to 1st Dec 2020. In this report we will choose 5 stocks, Apple, Amazon, Google, NIO and Tesla as an example.
+
+# Method and Results
+
+We first download the price data by quantmod.
+
+```{r echo=TRUE, warning=FALSE}
+# Download price from Quantmod
+ 
+# options("getSymbols.warning4.0"=FALSE)
+# options("getSymbols.yahoo.warning"=FALSE)
+ a <- getSymbols(c("AAPL","AMZN","GOOG","NIO","TSLA"), from = '2020-05-01',
+         to = "2020-12-01",warnings = FALSE,
+         auto.assign = TRUE)
+```
+
+Separate the data set into two parts, which are from May to June and from July to December 1st. And combine the closing prices of each stock.
+
+```{r}
+stock1<- AAPL
+stock2<- AMZN
+stock3<- GOOG
+stock4<- NIO
+stock5<- TSLA
+model<- data.frame(cbind(stock1[1:42,6],stock2[1:42,6],stock3[1:42,6],stock4[1:42,6],stock5[1:42,6]))
+invest<- data.frame(cbind(stock1[43:148,6],stock2[43:148,6],stock3[43:148,6],stock4[43:148,6],stock5[43:148,6]))
+```
+
+We then calculated the matrix rate of everyday return and get it demeaned and devided by root number of days. And use the matrix to compute its inverse of covariance. Vector r is the mean of rate of everyday return. After that, calculate the MPT parameter A, B, C and D, where
+$$ A=1'\begin{matrix}\sum^{-1}\end{matrix}1 $$
+$$B=1'\begin{matrix}\sum^{-1}\end{matrix}r  $$
+$$ C=r'\begin{matrix}\sum^{-1}\end{matrix}r$$
+$$ D=AC-B$$
+
+```{r}
+# Everyday return rate
+return<- data.frame(matrix(data=NA,ncol=5,nrow=41))
+return_std<- data.frame(matrix(data=NA,ncol=5,nrow=41))
+for (i in 1:41){
+  return[i,1]<- model[i+1,1]/model[i,1]-1
+  return[i,2]<- model[i+1,2]/model[i,2]-1
+  return[i,3]<- model[i+1,3]/model[i,3]-1
+  return[i,4]<- model[i+1,4]/model[i,4]-1
+  return[i,5]<- model[i+1,5]/model[i,5]-1
+}
+for (i in 1:5){
+  return_std[,i]<- return[,i]-mean(return[,i])/sqrt(40)
+}
+# Calculate the inverse of covariance and mean of everyday return r
+covar<- cov(return_std)
+inverse<- solve(covar)
+r<- as.matrix(c(mean(return$X1),mean(return$X2),mean(return$X3),mean(return$X4),mean(return$X5)))
+invcovr<- inverse %*% r
+# Calculate the MPT parameter
+A<- sum(inverse)
+B<- sum(invcovr)
+C<- t(r) %*% invcovr
+D<- A*C-B*B
+data.frame(A=A, B=B, C=C, D=D)
+```
+
+We now calculate the weights using MPT parameters we have just got. We take the risk free rate in United States as 0.2 in our computation. The weights are
+$$  weights=\frac{\begin{matrix}\sum^{-1}\end{matrix}r-r_{f}1}{B-Ar_{f}}$$
+
+```{r}
+# risk free rate in US is 0.2
+rf<- matrix(0.2, ncol=1, nrow=5)
+weight<- data.frame(weighted=inverse %*% (r-rf))
+weight_std<- data.frame(weight_std=matrix(NA,ncol=1, nrow=5))
+for (i in 1:5){
+  weight_std[i,]<- weight[i,]/(B-0.2*A)
+}
+frame_weight<- data.frame(AAPL=weight_std[1,], AMZN=weight_std[2,], GOOG=weight_std[3,], NIO=weight_std[4,], TSLA=weight_std[5,])
+frame_weight
+```
+
+This chart indicates how much money we should distribute on each stock in this portfolio so that maximize the expectation of returns. Then we put 250000$ in this portfolio on 1st July 2020, and hold it until 1st Dec 2020. And draw a plot to trace our balance everyday in this period.
+
+```{r}
+# Calculate the return on 1st Dec 2020
+result<- as.matrix(data.frame(rbind(invest[1,], invest[106,], invest[106,]/invest[1,])))
+weight_std2<- as.matrix(weight_std)
+profit<- crossprod(result[3,], weight_std2)
+print<- data.frame(Return1201=profit-1, Balance=profit*250000)
+data.frame(ReturnRate=print$weight_std, Balance=print$weight_std.1)
+```
+
+Oops, it seems this portfolio plan is not making us money. Actually, we lost 2622.7 USD in this transaction. Now let's look at the variation of everyday balance based on the stocks' closing price.
+
+```{r}
+# Make a chart of everyday balance
+everyday<- return
+for (i in 1:105){
+  for (j in 1:5){
+     everyday[i,j]<- invest[i+1,j]/invest[1,j]*frame_weight[1,j]
+     everyday[i,6]<- everyday$X1[i]+everyday$X2[i]+everyday$X3[i]+everyday$X4[i]+everyday$X5[i]
+     everyday[i,7]<- ymd(rownames(invest[i+1,]))
+  }
+}
+
+everyday$updown<- "up"
+for (i in 1:104){
+  if (everyday$V6[i+1] < everyday$V6[i]){
+    everyday$updown[i+1]<- "down"
+  }
+}
+# Plot the trend
+ggplot(data=everyday, mapping=aes(x=V7,y=V6*250000,group=1))+
+  geom_point(aes(color=updown))+
+  scale_color_manual(breaks=c("up", "down"), values=c("red2","green3"))+
+  geom_line(aes(x=V7, y=V6*250000))+
+  labs(x="Month", y="Balance in USD")
+```
+
+From this chart we can see clearly how our money goes. If the balance is more(red dots) than yesterday or less(green dots). And we also draw the candlestick chart as an appendix to see the performance of each of 5 stocks we've chosen.
+
+```{r}
+chartSeries(AAPL['2020-7/2020-12'], theme=chartTheme('white'))
+chartSeries(AMZN['2020-7/2020-12'], theme=chartTheme('white'))
+chartSeries(GOOG['2020-7/2020-12'], theme=chartTheme('white'))
+chartSeries(NIO['2020-7/2020-12'], theme=chartTheme('white'))
+chartSeries(TSLA['2020-7/2020-12'], theme=chartTheme('white'))
+```
+
+# Conclusion
+
+The example we choose shows that this portfolio is not profitable, because efficient portfolio takes historical data to predict the future without taking factors like variation of market fluctuation into consideration. Instead of being a economic method, it is more like a quantitative method. In this case, we have $247377 after transaction on 1st Dec 2020. The portfolio tends to go upwards before September, but experienced a sharp plunge during September. Though it recovers after that, we still lost money by the time we finished trading on 1st Dec 2020.
+
+However, there's no theory that guarantees investors that they will 100% make money. The contribution that Markowitz has made is extraordinary.This theory did us the portfolio with the same risk but the highest expected return. The optimal portfolio is an effective portfolio selected by an investor and has the greatest utility. It has also greatly helped investors to decide their asset allocation before every investment. 
+
+
+
+
